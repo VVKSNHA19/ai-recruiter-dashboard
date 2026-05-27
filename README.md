@@ -36,3 +36,16 @@ Google Sheets Storage
 Excel Export
 ↓
 Recruiter Email Automation
+## Screenshots
+
+### Dashboard
+
+![Dashboard](screenshots/dashboard.png)
+
+### ATS Score Chart
+
+![Chart](screenshots/chart.png)
+
+### Google Sheets Integration
+
+![Sheets](screenshots/sheets.png)
