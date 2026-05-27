@@ -6,6 +6,9 @@ import plotly.express as px
 import gspread
 
 from oauth2client.service_account import ServiceAccountCredentials
+from urllib.parse import quote
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # -----------------------------
 # GOOGLE SHEETS CONNECTION
@@ -16,8 +19,8 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-    dict(st.secrets),
+credentials = ServiceAccountCredentials.from_json_keyfile_name(
+    "credentials.json",
     scope
 )
 
@@ -36,7 +39,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("AI Recruiter Dashboard")
+st.title("AI Recruiter Dashboard with RAG Resume Chatbot")
 
 # -----------------------------
 # SKILLS DATABASE
@@ -67,6 +70,39 @@ skills_database = [
 ]
 
 # -----------------------------
+# RAG CHATBOT FUNCTION
+# -----------------------------
+
+def rag_resume_chatbot(question, resume_text):
+
+    chunks = re.split(r"\n|\.", resume_text)
+
+    chunks = [
+        chunk.strip()
+        for chunk in chunks
+        if len(chunk.strip()) > 30
+    ]
+
+    if not chunks:
+        return "No useful resume content found."
+
+    vectorizer = TfidfVectorizer(stop_words="english")
+
+    vectors = vectorizer.fit_transform(chunks + [question])
+
+    question_vector = vectors[-1]
+    chunk_vectors = vectors[:-1]
+
+    similarities = cosine_similarity(
+        question_vector,
+        chunk_vectors
+    ).flatten()
+
+    best_index = similarities.argmax()
+
+    return chunks[best_index]
+
+# -----------------------------
 # FILE UPLOAD
 # -----------------------------
 
@@ -77,6 +113,7 @@ uploaded_files = st.file_uploader(
 )
 
 all_candidates = []
+resume_texts = {}
 
 # -----------------------------
 # PROCESS FILES
@@ -95,7 +132,9 @@ if uploaded_files:
                 extracted = page.extract_text()
 
                 if extracted:
-                    resume_text += extracted
+                    resume_text += extracted + "\n"
+
+        resume_texts[uploaded_file.name] = resume_text
 
         # -----------------------------
         # SKILL EXTRACTION
@@ -157,7 +196,7 @@ if uploaded_files:
             category = "Data Analyst Candidate"
 
         # -----------------------------
-        # STORE IN PYTHON LIST
+        # STORE DATA
         # -----------------------------
 
         all_candidates.append({
@@ -180,22 +219,13 @@ if uploaded_files:
         ])
 
     # -----------------------------
-    # CREATE DATAFRAME
+    # DATAFRAME
     # -----------------------------
 
     df = pd.DataFrame(all_candidates)
 
-    # -----------------------------
-    # SHOW TABLE
-    # -----------------------------
-
     st.subheader("Candidate Analysis")
-
     st.dataframe(df)
-
-    # -----------------------------
-    # TOP CANDIDATES
-    # -----------------------------
 
     top_df = df.sort_values(
         by="ATS Score",
@@ -203,7 +233,6 @@ if uploaded_files:
     )
 
     st.subheader("Top Candidates")
-
     st.dataframe(top_df)
 
     # -----------------------------
@@ -237,3 +266,90 @@ if uploaded_files:
             file_name=excel_file,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+    # -----------------------------
+    # RAG RESUME CHATBOT
+    # -----------------------------
+
+    st.subheader("RAG Resume Chatbot")
+
+    selected_resume_for_chat = st.selectbox(
+        "Select Resume for Chatbot",
+        df["Resume"]
+    )
+
+    question = st.text_input(
+        "Ask question about selected resume",
+        placeholder="Example: What AI/ML projects has this candidate done?"
+    )
+
+    if st.button("Ask Chatbot"):
+
+        selected_resume_text = resume_texts[selected_resume_for_chat]
+
+        answer = rag_resume_chatbot(
+            question,
+            selected_resume_text
+        )
+
+        st.write("Answer from resume:")
+        st.success(answer)
+
+    # -----------------------------
+    # EMAIL AUTOMATION
+    # -----------------------------
+
+    st.subheader("Recruiter Email Automation")
+
+    selected_candidate = st.selectbox(
+        "Select Candidate for Email",
+        df["Resume"]
+    )
+
+    candidate_row = df[df["Resume"] == selected_candidate].iloc[0]
+
+    email_type = st.selectbox(
+        "Select Email Type",
+        ["Shortlisted", "Interview Invitation", "Rejected"]
+    )
+
+    email_subject = f"{email_type} - {candidate_row['Resume']}"
+
+    email_body = f"""
+Dear Candidate,
+
+This is an update regarding your resume application.
+
+Status: {email_type}
+Category: {candidate_row['Category']}
+ATS Score: {candidate_row['ATS Score']}
+Detected Skills: {candidate_row['Skills']}
+
+Regards,
+Recruitment Team
+"""
+
+    st.text_input(
+        "Email Subject",
+        value=email_subject
+    )
+
+    st.text_area(
+        "Email Body",
+        value=email_body,
+        height=250
+    )
+
+    gmail_url = (
+        "https://mail.google.com/mail/?view=cm&fs=1"
+        f"&su={quote(email_subject)}"
+        f"&body={quote(email_body)}"
+    )
+
+    st.markdown(
+        f"[Open Draft in Gmail]({gmail_url})"
+    )
+
+else:
+
+    st.info("Upload resume PDFs to start analysis.")
