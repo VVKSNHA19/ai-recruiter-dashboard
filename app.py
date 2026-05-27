@@ -16,8 +16,8 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-credentials = ServiceAccountCredentials.from_json_keyfile_name(
-    "credentials.json",
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+    dict(st.secrets),
     scope
 )
 
