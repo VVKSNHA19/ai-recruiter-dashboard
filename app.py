@@ -20,10 +20,9 @@ scope = [
 ]
 
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-    dict(st.secrets),
+    dict(st.secrets["gcp_service_account"]),
     scope
 )
-
 client_sheet = gspread.authorize(credentials)
 
 sheet = client_sheet.open_by_url(
